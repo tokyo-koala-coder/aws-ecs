@@ -1,0 +1,44 @@
+version: 0.2
+env:
+  shell: bash
+
+phases:
+  pre_build:
+    commands:
+      - |
+        set -euo pipefail
+
+        registry=${REPOSITORY_URI%%/*}
+        aws ecr get-login-password --region "$AWS_DEFAULT_REGION" |
+          docker login --username AWS --password-stdin "$registry"
+
+  build:
+    commands:
+      - |
+        set -euo pipefail
+
+        # The build ID makes the tag unique even when the same commit is rebuilt.
+        tag=${CODEBUILD_BUILD_ID##*:}
+        image="$REPOSITORY_URI:$tag"
+
+        mkdir image-context deploy
+        cp app/Dockerfile image-context/
+        cp "$CODEBUILD_SRC_DIR_JavaPackage/app.jar" image-context/
+
+        docker build --platform linux/arm64 --tag "$image" image-context
+        docker push "$image"
+
+        # Deploy by digest so the task definition identifies the image from this build.
+        digest=$(aws ecr describe-images --repository-name "$REPOSITORY_NAME" \
+          --image-ids "imageTag=$tag" --query 'imageDetails[0].imageDigest' --output text)
+        [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]
+        printf '{"Parameters":{"ImageUri":"%s@%s"}}\n' "$REPOSITORY_URI" "$digest" > deploy/image.json
+
+        # Ship the service template from the same source revision as the tested JAR.
+        cp infra/service.yml deploy/service.yml
+
+artifacts:
+  base-directory: deploy
+  files:
+    - image.json
+    - service.yml

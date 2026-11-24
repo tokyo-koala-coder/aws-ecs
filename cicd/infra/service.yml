@@ -1,0 +1,114 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: ECS Fargate Java demo service deployed by CodePipeline after approval.
+
+Parameters:
+  ClusterName:
+    Type: String
+  ServiceName:
+    Type: String
+  TaskExecutionRoleArn:
+    Type: String
+  PublicSubnetId:
+    Type: String
+    AllowedPattern: 'subnet-[0-9a-f]+'
+  TaskSecurityGroupId:
+    Type: String
+    AllowedPattern: 'sg-[0-9a-f]+'
+  LogGroupName:
+    Type: String
+
+  # The image build resolves this digest after pushing to ECR.
+  ImageUri:
+    Type: String
+    AllowedPattern: '[^@ ]+@sha256:[0-9a-f]{64}'
+
+Resources:
+  TaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: !Ref ServiceName
+      RequiresCompatibilities: [FARGATE]
+      NetworkMode: awsvpc
+
+      # Minimum Linux Fargate size: 0.25 vCPU and 512 MiB.
+      Cpu: '256'
+      Memory: '512'
+      ExecutionRoleArn: !Ref TaskExecutionRoleArn
+      RuntimePlatform:
+        OperatingSystemFamily: LINUX
+        CpuArchitecture: ARM64
+      ContainerDefinitions:
+        - Name: app
+          Image: !Ref ImageUri
+          Essential: true
+          PortMappings:
+            - ContainerPort: 8080
+
+          # The request stays inside the container, so it needs no security group ingress.
+          HealthCheck:
+            Command: [CMD, wget, -q, -O, /dev/null, 'http://127.0.0.1:8080/health']
+            Interval: 30
+            Timeout: 5
+            Retries: 3
+            StartPeriod: 30
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref LogGroupName
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: ecs
+
+  Service:
+    Type: AWS::ECS::Service
+    Properties:
+      Cluster: !Ref ClusterName
+      ServiceName: !Ref ServiceName
+      TaskDefinition: !Ref TaskDefinition
+      LaunchType: FARGATE
+      PlatformVersion: '1.4.0'
+
+      # ECS creates the service with one task by default. Omit DesiredCount to let scaling own later changes.
+      DeploymentConfiguration:
+        DeploymentCircuitBreaker:
+          Enable: true
+          Rollback: true
+        MinimumHealthyPercent: 100
+        MaximumPercent: 200
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+
+          # Outbound access from the public subnet avoids a NAT gateway for this demo.
+          AssignPublicIp: ENABLED
+          SecurityGroups: [!Ref TaskSecurityGroupId]
+          Subnets: [!Ref PublicSubnetId]
+
+  ScalingTarget:
+    Type: AWS::ApplicationAutoScaling::ScalableTarget
+
+    # Register only after the ECS service stabilizes. AWS manages the service-linked role.
+    DependsOn: Service
+    Properties:
+      MinCapacity: 1
+      MaxCapacity: 2
+      ResourceId: !Sub 'service/${ClusterName}/${ServiceName}'
+      ScalableDimension: ecs:service:DesiredCount
+      ServiceNamespace: ecs
+
+  CpuScalingPolicy:
+    Type: AWS::ApplicationAutoScaling::ScalingPolicy
+    Properties:
+      PolicyName: average-cpu-70
+      PolicyType: TargetTrackingScaling
+      ScalingTargetId: !Ref ScalingTarget
+      TargetTrackingScalingPolicyConfiguration:
+        PredefinedMetricSpecification:
+          PredefinedMetricType: ECSServiceAverageCPUUtilization
+        ScaleInCooldown: 60
+        ScaleOutCooldown: 60
+        TargetValue: 70
+
+Outputs:
+  ServiceName:
+    Value: !GetAtt Service.Name
+  TaskDefinitionArn:
+    Value: !Ref TaskDefinition

@@ -1,0 +1,576 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: GitHub to Java on ECS Fargate via CodePipeline.
+
+Parameters:
+  ProjectName:
+    Type: String
+    Default: java-ecs-demo
+    AllowedPattern: '[a-z][a-z0-9-]{2,29}'
+  Environment:
+    Type: String
+    Default: dev
+    AllowedPattern: '[a-z][a-z0-9-]{1,11}'
+  GitHubRepository:
+    Type: String
+    Description: GitHub repository in owner/repository form.
+    AllowedPattern: '[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+'
+  GitHubBranch:
+    Type: String
+    Default: main
+    MinLength: 1
+  ConnectionArn:
+    Type: String
+    Description: ARN of an AVAILABLE GitHub CodeConnections connection in this account and region.
+    AllowedPattern: 'arn:[a-z0-9-]+:(codeconnections|codestar-connections):[a-z0-9-]+:[0-9]{12}:connection/[a-zA-Z0-9-]+'
+
+Resources:
+
+  # The pipeline stack owns the network. Delete the service stack before this stack.
+  Vpc:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.240.0.0/24
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+
+  GatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref Vpc
+      InternetGatewayId: !Ref InternetGateway
+
+  PublicSubnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      CidrBlock: 10.240.0.0/26
+
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref Vpc
+
+  InternetRoute:
+    Type: AWS::EC2::Route
+    DependsOn: GatewayAttachment
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+
+  SubnetRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnet
+      RouteTableId: !Ref PublicRouteTable
+
+  # Tasks use outbound HTTPS for ECR and CloudWatch Logs. Health checks run inside the container.
+  TaskSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      VpcId: !Ref Vpc
+      GroupDescription: HTTPS egress for ECR and CloudWatch Logs
+      SecurityGroupEgress:
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+
+  Cluster:
+    Type: AWS::ECS::Cluster
+    Properties:
+      ClusterName: !Sub '${ProjectName}-${Environment}'
+
+  Repository:
+    Type: AWS::ECR::Repository
+
+    # Preserve images for rollback. Delete the repository explicitly after teardown to stop storage charges.
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      RepositoryName: !Sub '${ProjectName}-${Environment}'
+      ImageTagMutability: IMMUTABLE
+
+  ArtifactBucket:
+    Type: AWS::S3::Bucket
+
+    # Preserve build artifacts when the stack is deleted. Empty and delete this bucket during final cleanup.
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      OwnershipControls:
+        Rules:
+          - ObjectOwnership: BucketOwnerEnforced
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+
+  # Pre-created log groups let the service roles write to scoped destinations with seven-day retention.
+  HookLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${ProjectName}-${Environment}-hook'
+      RetentionInDays: 7
+
+  TestLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/codebuild/${ProjectName}-${Environment}-test'
+      RetentionInDays: 7
+
+  ImageLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/codebuild/${ProjectName}-${Environment}-image'
+      RetentionInDays: 7
+
+  TaskLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/ecs/${ProjectName}-${Environment}'
+      RetentionInDays: 7
+
+  HookRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: {Service: lambda.amazonaws.com}
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: ReportPipelineResult
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: [codepipeline:PutJobSuccessResult, codepipeline:PutJobFailureResult]
+                Resource: '*'
+              - Effect: Allow
+                Action: [logs:CreateLogStream, logs:PutLogEvents]
+                Resource: !GetAtt HookLogGroup.Arn
+
+  PipelineHook:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub '${ProjectName}-${Environment}-hook'
+      Runtime: python3.12
+      Handler: index.handler
+      Role: !GetAtt HookRole.Arn
+      MemorySize: 128
+      Timeout: 30
+      Code:
+        ZipFile: |
+          import boto3
+
+          pipeline = boto3.client("codepipeline")
+
+          def handler(event, context):
+              job = event["CodePipeline.job"]
+              job_id = job["id"]
+              mode = job["data"]["actionConfiguration"]["configuration"].get("UserParameters")
+
+              if mode == "source-hook":
+
+                  # Extend this hook when the custom GitHub behavior is specified.
+                  print("GitHub SourceArtifact is ready; source hook is a placeholder.")
+              elif mode == "skip-static-check":
+                  print("Static analysis skipped for this demo.")
+              else:
+                  pipeline.put_job_failure_result(
+                      jobId=job_id,
+                      failureDetails={"type": "ConfigurationError", "message": "Unknown hook mode"},
+                  )
+                  return
+
+              pipeline.put_job_success_result(jobId=job_id)
+
+  TestBuildRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: {Service: codebuild.amazonaws.com}
+            Action: sts:AssumeRole
+            Condition:
+              StringEquals:
+                aws:SourceAccount: !Ref AWS::AccountId
+              ArnEquals:
+                aws:SourceArn: !Sub 'arn:${AWS::Partition}:codebuild:${AWS::Region}:${AWS::AccountId}:project/${ProjectName}-${Environment}-test'
+      Policies:
+        - PolicyName: JavaBuild
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: [s3:GetBucketAcl, s3:GetBucketLocation]
+                Resource: !GetAtt ArtifactBucket.Arn
+              - Effect: Allow
+                Action: [s3:GetObject, s3:GetObjectVersion, s3:PutObject]
+                Resource: !Sub '${ArtifactBucket.Arn}/*'
+              - Effect: Allow
+                Action: [logs:CreateLogStream, logs:PutLogEvents]
+                Resource: !GetAtt TestLogGroup.Arn
+
+  ImageBuildRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: {Service: codebuild.amazonaws.com}
+            Action: sts:AssumeRole
+            Condition:
+              StringEquals:
+                aws:SourceAccount: !Ref AWS::AccountId
+              ArnEquals:
+                aws:SourceArn: !Sub 'arn:${AWS::Partition}:codebuild:${AWS::Region}:${AWS::AccountId}:project/${ProjectName}-${Environment}-image'
+      Policies:
+        - PolicyName: PublishImage
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: [s3:GetBucketAcl, s3:GetBucketLocation]
+                Resource: !GetAtt ArtifactBucket.Arn
+              - Effect: Allow
+                Action: [s3:GetObject, s3:GetObjectVersion, s3:PutObject]
+                Resource: !Sub '${ArtifactBucket.Arn}/*'
+              - Effect: Allow
+                Action: [logs:CreateLogStream, logs:PutLogEvents]
+                Resource: !GetAtt ImageLogGroup.Arn
+              - Effect: Allow
+                Action: ecr:GetAuthorizationToken
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - ecr:BatchCheckLayerAvailability
+                  - ecr:InitiateLayerUpload
+                  - ecr:UploadLayerPart
+                  - ecr:CompleteLayerUpload
+                  - ecr:PutImage
+                  - ecr:BatchGetImage
+                  - ecr:DescribeImages
+                Resource: !GetAtt Repository.Arn
+
+  # ECS uses this role to pull the image and write logs for the task.
+  TaskExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: {Service: ecs-tasks.amazonaws.com}
+            Action: sts:AssumeRole
+            Condition:
+              StringEquals:
+                aws:SourceAccount: !Ref AWS::AccountId
+      Policies:
+        - PolicyName: PullImageAndLog
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: ecr:GetAuthorizationToken
+                Resource: '*'
+              - Effect: Allow
+                Action: [ecr:BatchCheckLayerAvailability, ecr:BatchGetImage, ecr:GetDownloadUrlForLayer]
+                Resource: !GetAtt Repository.Arn
+              - Effect: Allow
+                Action: [logs:CreateLogStream, logs:PutLogEvents]
+                Resource: !GetAtt TaskLogGroup.Arn
+
+  # CloudFormation uses this role to manage the service stack, including teardown.
+  ServiceStackRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: {Service: cloudformation.amazonaws.com}
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: ManageDemoService
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - ecs:CreateService
+                  - ecs:UpdateService
+                  - ecs:DescribeServices
+                  - ecs:DeleteService
+                  - ecs:ListServiceDeployments
+                  - ecs:TagResource
+                  - ecs:UntagResource
+                  - ecs:ListTagsForResource
+                Resource: !Sub 'arn:${AWS::Partition}:ecs:${AWS::Region}:${AWS::AccountId}:service/${ProjectName}-${Environment}/${ProjectName}-${Environment}'
+              - Effect: Allow
+                Action: [ecs:DescribeServiceDeployments, ecs:StopServiceDeployment]
+                Resource:
+                  - !Sub 'arn:${AWS::Partition}:ecs:${AWS::Region}:${AWS::AccountId}:service/${ProjectName}-${Environment}/${ProjectName}-${Environment}'
+                  - !Sub 'arn:${AWS::Partition}:ecs:${AWS::Region}:${AWS::AccountId}:service-deployment/${ProjectName}-${Environment}/${ProjectName}-${Environment}/*'
+              - Effect: Allow
+                Action: [ecs:RegisterTaskDefinition, ecs:TagResource, ecs:UntagResource, ecs:ListTagsForResource]
+                Resource: !Sub 'arn:${AWS::Partition}:ecs:${AWS::Region}:${AWS::AccountId}:task-definition/${ProjectName}-${Environment}:*'
+              - Effect: Allow
+                Action: [ecs:DescribeTaskDefinition, ecs:DeregisterTaskDefinition]
+                Resource: '*'
+              - Effect: Allow
+                Action: iam:GetRole
+                Resource: !GetAtt TaskExecutionRole.Arn
+              - Effect: Allow
+                Action: iam:PassRole
+                Resource: !GetAtt TaskExecutionRole.Arn
+                Condition:
+                  StringEquals:
+                    iam:PassedToService: ecs-tasks.amazonaws.com
+              - Effect: Allow
+                Action: iam:CreateServiceLinkedRole
+                Resource:
+                  - !Sub 'arn:${AWS::Partition}:iam::${AWS::AccountId}:role/aws-service-role/ecs.amazonaws.com/AWSServiceRoleForECS'
+                  - !Sub 'arn:${AWS::Partition}:iam::${AWS::AccountId}:role/aws-service-role/ecs.application-autoscaling.amazonaws.com/AWSServiceRoleForApplicationAutoScaling_ECSService'
+                Condition:
+                  StringEquals:
+                    iam:AWSServiceName: [ecs.amazonaws.com, ecs.application-autoscaling.amazonaws.com]
+              - Effect: Allow
+                Action:
+                  - application-autoscaling:RegisterScalableTarget
+                  - application-autoscaling:DeregisterScalableTarget
+                  - application-autoscaling:PutScalingPolicy
+                  - application-autoscaling:DeleteScalingPolicy
+                Resource: !Sub 'arn:${AWS::Partition}:application-autoscaling:${AWS::Region}:${AWS::AccountId}:scalable-target/*'
+                Condition:
+                  StringEquals:
+                    application-autoscaling:service-namespace: ecs
+                    application-autoscaling:scalable-dimension: ecs:service:DesiredCount
+              - Effect: Allow
+                Action: [application-autoscaling:TagResource, application-autoscaling:UntagResource, application-autoscaling:ListTagsForResource]
+                Resource: !Sub 'arn:${AWS::Partition}:application-autoscaling:${AWS::Region}:${AWS::AccountId}:scalable-target/*'
+              - Effect: Allow
+                Action:
+                  - application-autoscaling:DescribeScalableTargets
+                  - application-autoscaling:DescribeScalingPolicies
+                  - application-autoscaling:DescribeScheduledActions
+                  - cloudwatch:GetMetricData
+                Resource: '*'
+
+  TestBuild:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Name: !Sub '${ProjectName}-${Environment}-test'
+      ServiceRole: !GetAtt TestBuildRole.Arn
+      TimeoutInMinutes: 15
+      Artifacts: {Type: CODEPIPELINE}
+      Source:
+        Type: CODEPIPELINE
+        BuildSpec: infra/buildspec/test.yml
+      Environment:
+        Type: ARM_CONTAINER
+        ComputeType: BUILD_GENERAL1_SMALL
+        Image: aws/codebuild/amazonlinux-aarch64-standard:3.0
+      LogsConfig:
+        CloudWatchLogs:
+          Status: ENABLED
+          GroupName: !Ref TestLogGroup
+
+  ImageBuild:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Name: !Sub '${ProjectName}-${Environment}-image'
+      ServiceRole: !GetAtt ImageBuildRole.Arn
+      TimeoutInMinutes: 15
+      Artifacts: {Type: CODEPIPELINE}
+      Source:
+        Type: CODEPIPELINE
+        BuildSpec: infra/buildspec/image.yml
+      Environment:
+        Type: ARM_CONTAINER
+        ComputeType: BUILD_GENERAL1_SMALL
+        Image: aws/codebuild/amazonlinux-aarch64-standard:3.0
+
+        # Docker image builds use privileged mode in this project, after manual approval.
+        PrivilegedMode: true
+        EnvironmentVariables:
+          - Name: REPOSITORY_URI
+            Value: !GetAtt Repository.RepositoryUri
+          - Name: REPOSITORY_NAME
+            Value: !Ref Repository
+      LogsConfig:
+        CloudWatchLogs:
+          Status: ENABLED
+          GroupName: !Ref ImageLogGroup
+
+  PipelineRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: {Service: codepipeline.amazonaws.com}
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: RunDemoPipeline
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: [codeconnections:UseConnection, codestar-connections:UseConnection]
+                Resource: !Ref ConnectionArn
+              - Effect: Allow
+                Action: [s3:GetBucketAcl, s3:GetBucketLocation, s3:GetBucketVersioning]
+                Resource: !GetAtt ArtifactBucket.Arn
+              - Effect: Allow
+                Action: [s3:GetObject, s3:GetObjectVersion, s3:PutObject]
+                Resource: !Sub '${ArtifactBucket.Arn}/*'
+              - Effect: Allow
+                Action: lambda:InvokeFunction
+                Resource: !GetAtt PipelineHook.Arn
+              - Effect: Allow
+                Action: [codebuild:StartBuild, codebuild:BatchGetBuilds]
+                Resource: [!GetAtt TestBuild.Arn, !GetAtt ImageBuild.Arn]
+              - Effect: Allow
+                Action:
+                  - cloudformation:CreateStack
+                  - cloudformation:UpdateStack
+                  - cloudformation:DescribeStacks
+                  - cloudformation:DescribeStackEvents
+                  - cloudformation:DescribeStackResources
+                  - cloudformation:GetTemplate
+                Resource: !Sub 'arn:${AWS::Partition}:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/${ProjectName}-${Environment}-service/*'
+              - Effect: Allow
+                Action: cloudformation:ValidateTemplate
+                Resource: '*'
+              - Effect: Allow
+                Action: iam:PassRole
+                Resource: !GetAtt ServiceStackRole.Arn
+                Condition:
+                  StringEquals:
+                    iam:PassedToService: cloudformation.amazonaws.com
+
+  # Source can start as soon as the pipeline is created, so finish the network wiring first.
+  Pipeline:
+    Type: AWS::CodePipeline::Pipeline
+    DependsOn: [InternetRoute, SubnetRouteTableAssociation]
+    Properties:
+      Name: !Sub '${ProjectName}-${Environment}'
+      PipelineType: V2
+      ExecutionMode: QUEUED
+      RoleArn: !GetAtt PipelineRole.Arn
+      ArtifactStore:
+        Type: S3
+        Location: !Ref ArtifactBucket
+      Stages:
+        - Name: Source
+          Actions:
+            - Name: GitHub
+              ActionTypeId: {Category: Source, Owner: AWS, Provider: CodeStarSourceConnection, Version: '1'}
+              Configuration:
+                ConnectionArn: !Ref ConnectionArn
+                FullRepositoryId: !Ref GitHubRepository
+                BranchName: !Ref GitHubBranch
+                DetectChanges: 'true'
+                OutputArtifactFormat: CODE_ZIP
+              OutputArtifacts:
+                - Name: SourceArtifact
+
+        # CodePipeline limits the first stage to Source actions, so the Lambda hook runs here.
+        - Name: StaticAnalysis
+          Actions:
+            - Name: SourceHook
+              RunOrder: 1
+              ActionTypeId: {Category: Invoke, Owner: AWS, Provider: Lambda, Version: '1'}
+              Configuration:
+                FunctionName: !Ref PipelineHook
+                UserParameters: source-hook
+              InputArtifacts:
+                - Name: SourceArtifact
+            - Name: SkipStaticAnalysis
+              RunOrder: 2
+              ActionTypeId: {Category: Invoke, Owner: AWS, Provider: Lambda, Version: '1'}
+              Configuration:
+                FunctionName: !Ref PipelineHook
+                UserParameters: skip-static-check
+        - Name: Build
+          Actions:
+            - Name: MavenVerify
+              ActionTypeId: {Category: Build, Owner: AWS, Provider: CodeBuild, Version: '1'}
+              Configuration:
+                ProjectName: !Ref TestBuild
+              InputArtifacts:
+                - Name: SourceArtifact
+              OutputArtifacts:
+                - Name: JavaPackage
+        - Name: Approval
+          Actions:
+            - Name: ApproveDeploy
+              ActionTypeId: {Category: Approval, Owner: AWS, Provider: Manual, Version: '1'}
+              Configuration:
+                CustomData: Review the GitHub revision and Maven result before approving ECR and ECS deployment.
+
+        # Build the approved JAR into an image before creating or updating the service stack.
+        - Name: Deploy
+          Actions:
+            - Name: PushImageToECR
+              RunOrder: 1
+              ActionTypeId: {Category: Build, Owner: AWS, Provider: CodeBuild, Version: '1'}
+              Configuration:
+                ProjectName: !Ref ImageBuild
+                PrimarySource: SourceArtifact
+              InputArtifacts:
+                - Name: SourceArtifact
+                - Name: JavaPackage
+              OutputArtifacts:
+                - Name: DeploymentArtifact
+            - Name: DeployFargateService
+              RunOrder: 2
+              ActionTypeId: {Category: Deploy, Owner: AWS, Provider: CloudFormation, Version: '1'}
+              Configuration:
+                ActionMode: CREATE_UPDATE
+                RoleArn: !GetAtt ServiceStackRole.Arn
+                StackName: !Sub '${ProjectName}-${Environment}-service'
+                TemplatePath: 'DeploymentArtifact::service.yml'
+                TemplateConfiguration: 'DeploymentArtifact::image.json'
+                ParameterOverrides: !Sub |
+                  {
+                    "ClusterName": "${Cluster}",
+                    "ServiceName": "${ProjectName}-${Environment}",
+                    "TaskExecutionRoleArn": "${TaskExecutionRole.Arn}",
+                    "PublicSubnetId": "${PublicSubnet}",
+                    "TaskSecurityGroupId": "${TaskSecurityGroup.GroupId}",
+                    "LogGroupName": "${TaskLogGroup}"
+                  }
+              InputArtifacts:
+                - Name: DeploymentArtifact
+
+Outputs:
+  PipelineName:
+    Value: !Ref Pipeline
+  ClusterName:
+    Value: !Ref Cluster
+  ServiceStackName:
+    Value: !Sub '${ProjectName}-${Environment}-service'
+
+  # Record these retained resource identifiers before deleting the pipeline stack.
+  RepositoryUri:
+    Value: !GetAtt Repository.RepositoryUri
+  ArtifactBucketName:
+    Value: !Ref ArtifactBucket
+  TaskLogGroupName:
+    Value: !Ref TaskLogGroup
