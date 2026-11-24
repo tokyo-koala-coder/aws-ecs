@@ -6,9 +6,9 @@
 
 | 项目 | 值 |
 | --- | --- |
-| AWS 账户 / 区域 | `572535616215` / 东京 `ap-northeast-1` |
+| AWS 账户 / 区域 | `accountId` / region` |
 | AWS CLI profile | `cicd-deploy` |
-| GitHub 仓库 / 分支 | [mystylezfzjp-eng/cicd-java-ecs-demo](https://github.com/mystylezfzjp-eng/cicd-java-ecs-demo) / `main` |
+| GitHub 仓库 / 分支 | [mystylezfzjp-eng/cicd-java-ecs-demo](https://github.com/tokyo-koala-coder/aws-ecs.git) / `main` |
 | GitHub 连接 | `github-cicd-demo`，ARN 见 [开发环境配置](infra/config/dev.psd1) |
 | 流水线 / ECS 集群 / ECS 服务 | `java-ecs-demo-dev` |
 | CloudFormation 栈 | `java-ecs-demo-dev-pipeline`、`java-ecs-demo-dev-service` |
