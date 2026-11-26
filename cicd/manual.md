@@ -49,9 +49,9 @@
 安装并使用 JDK 17 和 Maven 3.9。
 
 
-1. 在仓库根目录运行 `.\infra\operations\preview-pipeline.ps1`。预览脚本会核对 AWS 账户、验证两份模板，然后自动调用 `deploy.ps1` 核对 GitHub 连接并提交 CloudFormation 变更集。此时可以查看计划中的资源变更。
-2. 拿到预览输出的 ARN 后，用 [inspect-change-set.ps1](infra/operations/inspect-change-set.ps1) 查看这份变更集（`.\infra\operations\inspect-change-set.ps1 -ChangeSetArn '<变更集 ARN>'`）。
-3. 核对无误后，用同一个 ARN [部署流水线](infra/operations/apply-change-set.ps1)（`.\infra\operations\apply-change-set.ps1 -ChangeSetArn '<变更集 ARN>'`）。
+1，手动运行 preview-pipeline.ps1 后，它会自动调用 deploy.ps1 生成待审核的变更集。
+2. 拿到 Preview 输出的 ARN 后，运行 inspect-change-set.ps1 查看这份变更集。
+3. 核对无误后，用 ARN 部署流水线。
 
 如果希望直接按当前配置生成并执行一份新变更集，可使用 `.\infra\deploy.ps1 -Apply`。[AWS CLI 部署说明](https://docs.aws.amazon.com/cli/latest/reference/cloudformation/deploy.html)
 
