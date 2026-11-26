@@ -5,10 +5,10 @@ phases:
       java: corretto17
   build:
     commands:
-      - mvn -B -ntp -f app/pom.xml clean verify
+      - mvn -B -ntp -f cicd/app/pom.xml clean verify
 
 # Pass the tested executable JAR to the image build after approval.
 artifacts:
-  base-directory: app/target
+  base-directory: cicd/app/target
   files:
     - app.jar

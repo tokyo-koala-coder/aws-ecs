@@ -11,7 +11,7 @@
 - PowerShell 脚本、模块和数据文件（`.ps1`、`.psm1`、`.psd1`）使用带 BOM 的 UTF-8 保存，以兼容 Windows PowerShell 5.1。支持 EditorConfig 的编辑器可以读取仓库的 `.editorconfig` 来应用此设置。
 - 将 AWS 账户、区域和环境差异放在配置中。IAM 权限遵循最小权限原则，避免将凭证和其他密钥写入仓库或日志。
 - 修改基础设施或流水线时，优先使用项目已有的格式检查、测试和计划预览验证变更。执行部署时核对目标账户、区域和环境。
-- CodeBuild 从仓库根目录执行，构建配置位于 `infra/buildspec/`，Maven 输出 `app/target/app.jar`。调整目录或制品路径时，同步更新流水线、构建配置及相关文档。
+- CodeBuild 从 Git 仓库根目录执行，构建配置位于 `cicd/infra/buildspec/`，Maven 输出 `cicd/app/target/app.jar`。本文件所在的 `cicd/` 是项目目录。调整目录或制品路径时，同步更新流水线、构建配置及相关文档。
 - 在 `infra/config/` 保存各环境的流水线参数，通过 `infra/deploy.ps1` 预览和部署流水线栈。
 - 本地应用脚本放在 `app/`，AWS 运维脚本放在 `infra/operations/`，仓库初始化脚本放在 `scripts/`。在 `manual.md` 链接可执行脚本并说明使用条件。AWS 运维脚本各自读取环境配置，无需预先加载会话变量。
 - 独立注释块与上一段代码之间留一个空行。构建脚本中不同用途的命令也用空行分段。

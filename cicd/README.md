@@ -61,7 +61,7 @@
 | --- | --- |
 | 1. Source | CodeConnections 监听指定 GitHub 分支，检出提交并生成 ZIP 制品。手动启动会使用该分支最新提交，后续动作使用同一次执行的源码。 |
 | 2. StaticAnalysis | 首先运行预留的 `SourceHook` Lambda 动作，然后运行直接返回成功的静态检查占位动作。 |
-| 3. Build | CodeBuild 执行 `mvn -B -ntp -f app/pom.xml clean verify`，运行 JUnit 测试并将应用和 Maven 运行时依赖打包为 `app.jar`。 |
+| 3. Build | CodeBuild 执行 `mvn -B -ntp -f cicd/app/pom.xml clean verify`，运行 JUnit 测试并将应用和 Maven 运行时依赖打包为 `app.jar`。 |
 | 4. Approval | 在 CodePipeline 控制台人工批准。 |
 | 5. Deploy | CodeBuild 用阶段 3 的 JAR 构建 ARM64 镜像并推送到 ECR。CloudFormation 使用镜像摘要创建或更新 ECS 任务定义及服务。 |
 

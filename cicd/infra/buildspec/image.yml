@@ -22,7 +22,7 @@ phases:
         image="$REPOSITORY_URI:$tag"
 
         mkdir image-context deploy
-        cp app/Dockerfile image-context/
+        cp cicd/app/Dockerfile image-context/
         cp "$CODEBUILD_SRC_DIR_JavaPackage/app.jar" image-context/
 
         docker build --platform linux/arm64 --tag "$image" image-context
@@ -35,7 +35,7 @@ phases:
         printf '{"Parameters":{"ImageUri":"%s@%s"}}\n' "$REPOSITORY_URI" "$digest" > deploy/image.json
 
         # Ship the service template from the same source revision as the tested JAR.
-        cp infra/service.yml deploy/service.yml
+        cp cicd/infra/service.yml deploy/service.yml
 
 artifacts:
   base-directory: deploy

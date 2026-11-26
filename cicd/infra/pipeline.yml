@@ -379,7 +379,7 @@ Resources:
       Artifacts: {Type: CODEPIPELINE}
       Source:
         Type: CODEPIPELINE
-        BuildSpec: infra/buildspec/test.yml
+        BuildSpec: cicd/infra/buildspec/test.yml
       Environment:
         Type: ARM_CONTAINER
         ComputeType: BUILD_GENERAL1_SMALL
@@ -398,7 +398,7 @@ Resources:
       Artifacts: {Type: CODEPIPELINE}
       Source:
         Type: CODEPIPELINE
-        BuildSpec: infra/buildspec/image.yml
+        BuildSpec: cicd/infra/buildspec/image.yml
       Environment:
         Type: ARM_CONTAINER
         ComputeType: BUILD_GENERAL1_SMALL
