@@ -1,4 +1,4 @@
-# AWS 部署与清理操作手册
+·# AWS 部署与清理操作手册
 
 这是面向实际操作的 PowerShell 手顺。项目结构和各阶段设计见 [README](README.md)，首次实验的观察和故障恢复记录见 [lab.md](lab.md)。
 
@@ -51,13 +51,12 @@
 
 1，手动运行 preview-pipeline.ps1 后，它会自动调用 deploy.ps1 生成待审核的变更集。
 2. 拿到 Preview 输出的 ARN 后，运行 inspect-change-set.ps1 查看这份变更集。
-3. 核对无误后，用 ARN 部署流水线。
+3. 核对无误后，用 ARN 部署流水线。 [apply-change-set.ps1]。脚本会执行这份变更集，等待并显示流水线栈的最终状态，预期为 `CREATE_COMPLETE` 或 `UPDATE_COMPLETE`。
 
-如果希望直接按当前配置生成并执行一份新变更集，可使用 `.\infra\deploy.ps1 -Apply`。[AWS CLI 部署说明](https://docs.aws.amazon.com/cli/latest/reference/cloudformation/deploy.html)
 
 ## 5. 运行流水线并审批
 
-从 CodePipeline 打开 `java-ecs-demo-dev`。首次建栈或推送 `main` 通常会自动触发执行。已有执行时，直接查看该次执行。需要手动启动时，点 **Release change** 或运行 [start-pipeline.ps1](infra/operations/start-pipeline.ps1)（`.\infra\operations\start-pipeline.ps1`）。
+从 CodePipeline 打开 `cicd-deploy`。首次建栈或推送 `master` 通常会自动触发执行。已有执行时，直接查看该次执行。需要手动启动时，点 **Release change** 或运行 [start-pipeline.ps1](infra/operations/start-pipeline.ps1)（`.\infra\operations\start-pipeline.ps1`）。
 
 确认 GitHub 提交和 Maven 测试结果，然后用当前控制台登录身份在 **Approval → ApproveDeploy → Review → Approve** 点击批准。流水线随后推送镜像到 ECR，按镜像摘要部署 ECS，并创建或更新服务栈。
 
