@@ -1,4 +1,4 @@
-function Get-ProjectStackStatus {
+﻿function Get-ProjectStackStatus {
     param([string]$StackName)
 
     # DescribeStacks reports an absent stack as a ValidationError. Preserve other failures.

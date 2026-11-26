@@ -1,5 +1,13 @@
 # 变更记录
 
+## 2026-11-26
+
+- 澄清手册中的流水线预览步骤，并简化查看和执行变更集的说明。已对照脚本核实自动调用与手动执行的顺序。未执行 AWS 预览、部署或端到端验证。
+
+- 将仓库现有的 17 个 PowerShell 脚本和配置统一为带 BOM 的 UTF-8，并通过 `.editorconfig` 设置新文件的编码。已在 Windows PowerShell 5.1 验证所有文件的语法及 `dev.psd1` 的导入。未执行 AWS 预览、部署或端到端验证。
+
+- 修复 Windows PowerShell 5.1 读取预览及 AWS 配置脚本时，UTF-8 注释吞掉下一行代码的问题，并将 dev 的 GitHub 仓库值改为模板要求的 `owner/repository` 格式。已在 Windows PowerShell 中通过模拟 AWS CLI 验证配置读取、账户与区域传递以及变更集预览参数。未执行真实 AWS 预览、部署或端到端验证。
+
 ## 2026-11-23
 
 - 将手册中的本地测试、仓库初始化、AWS 身份配置、流水线预览与执行、部署验证和清理命令提取为独立的 PowerShell 脚本。手册按使用场景标明步骤入口，并保留 GitHub 授权和人工审批等控制台操作。已通过 Windows PowerShell 5.1 语法检查、文档链接检查、AWS CLI 模拟流程、3 个 JUnit 测试及本地 HTTP 双端点验证。未执行实际 AWS 部署、清理或端到端验证。

@@ -8,6 +8,7 @@
 ## 开发约定
 
 - 本地开发环境使用 Windows PowerShell。提供本地命令时，优先使用 PowerShell 兼容语法。
+- PowerShell 脚本、模块和数据文件（`.ps1`、`.psm1`、`.psd1`）使用带 BOM 的 UTF-8 保存，以兼容 Windows PowerShell 5.1。支持 EditorConfig 的编辑器可以读取仓库的 `.editorconfig` 来应用此设置。
 - 将 AWS 账户、区域和环境差异放在配置中。IAM 权限遵循最小权限原则，避免将凭证和其他密钥写入仓库或日志。
 - 修改基础设施或流水线时，优先使用项目已有的格式检查、测试和计划预览验证变更。执行部署时核对目标账户、区域和环境。
 - CodeBuild 从仓库根目录执行，构建配置位于 `infra/buildspec/`，Maven 输出 `app/target/app.jar`。调整目录或制品路径时，同步更新流水线、构建配置及相关文档。

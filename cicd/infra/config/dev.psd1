@@ -1,12 +1,12 @@
-@{
-    Profile = 'YOUR_AWS_PROFILE'
-    Region = 'ap-northeast-1'
-    ExpectedAccount = 'YOUR_AWS_ACCOUNT_ID'
+﻿@{
+    Profile = 'default'
+    Region = 'us-east-2'
+    ExpectedAccount = '603858357078'
     Parameters = @{
         ProjectName = 'ecs-pipeline'
         Environment = 'dev'
-        GitHubRepository = 'YOUR_PROJET_REMOTE_ADDRESS'
+        GitHubRepository = 'tokyo-koala-coder/aws-ecs'
         GitHubBranch = 'master'
-        ConnectionArn = 'YOUR_ConnectionArn'
+        ConnectionArn = 'arn:aws:codeconnections:us-east-2:603858357078:connection/35f24f80-0021-4f8c-a79b-66a0eae79bb5'
     }
 }

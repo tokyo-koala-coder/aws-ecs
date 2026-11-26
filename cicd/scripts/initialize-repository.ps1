@@ -1,4 +1,4 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param(
     [string]$ConfigPath = (Join-Path $PSScriptRoot '../infra/config/dev.psd1')
 )

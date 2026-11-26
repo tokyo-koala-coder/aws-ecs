@@ -1,4 +1,4 @@
-[CmdletBinding(SupportsShouldProcess, ConfirmImpact = 'High')]
+﻿[CmdletBinding(SupportsShouldProcess, ConfirmImpact = 'High')]
 param(
     [ValidatePattern('^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$')]
     [string]$ArtifactBucket,

@@ -1,3 +1,8 @@
+﻿# Optional: Override default AWS configuration paths
+# $env:AWS_CONFIG_FILE = 'D:\aws\config'
+# $env:AWS_SHARED_CREDENTIALS_FILE = 'D:\aws\credentials'
+
+# Load and validate the selected environment config.
 $config = Import-PowerShellDataFile -LiteralPath $ConfigPath
 if ($config.ExpectedAccount -notmatch '^[0-9]{12}$' -or
     -not $config.Profile -or -not $config.Region -or

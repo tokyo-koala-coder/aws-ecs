@@ -21,39 +21,37 @@
 在 IAM 中创建或复用部署专用 IAM 用户。
 在该IAM用户下创建 Create access key 。密钥保存在本机 AWS 凭证文件中，仓库配置里只保存 profile 名称。[IAM 密钥设置](https://docs.aws.amazon.com/IAM/latest/UserGuide/access-keys-admin-managed.html)
 
-用 [configure-aws.ps1](infra/operations/configure-aws.ps1) 配置并验证身份。首次配置或更新本机 profile 时运行 `.\infra\operations\configure-aws.ps1 -Configure`，按提示输入访问密钥，默认区域填 `yourRegion`，输出格式填 `json`。已有 profile 时，按需运行 `.\infra\operations\configure-aws.ps1` 验证账户。STS 用于确认身份，后面的变更集会检查部署所需权限。
+接下来
+     1，先维护项目配置 config/dev.psd1，填写实际的 AWS Profile、Region、ExpectedAccount 及相关项目参数。
+        使用 configure-aws.ps1 配置并验证 AWS 身份。该脚本会自动加载 environment.ps1，读取并校验 dev.psd1 中的配置。
+        首次配置或更新本地 AWS 凭证时，执行 .\infra\operations\configure-aws.ps1 -Configure，按照提示输入 Access Key ID、Secret Access Key、默认区域及输出格式。
+        本地已存在对应 Profile 时，直接执行 .\infra\operations\configure-aws.ps1，无需重复配置凭证。
+        AWS CLI 默认从当前用户目录下的 .aws/config 和 .aws/credentials 读取配置及凭证，也可以通过 AWS_CONFIG_FILE 和 AWS_SHARED_CREDENTIALS_FILE 环境变量指定自定义路径。
+     最后，脚本通过 STS 获取当前 AWS 身份，并与 ExpectedAccount 进行比较，防止后续资源部署到错误的 AWS 账户。身份验证成功不代表已具备全部部署权限。
 
-## 2. 准备 GitHub 仓库和连接
+## 2. GitHub 与 AWS CodePipeline 连接配置
+1. 从远程仓库拉取代码，git clone
+2. 创建 AWS 与 GitHub 的连接
+       1，登录 AWS 控制台，搜索并进入 CodePipeline。
 
-1. 把 `app/` 和 `infra/` 一起推送到目标 GitHub 分支，并保持它们位于仓库根目录。当前私有仓库及 `main` 已就绪。
-2. [打开东京区 Connections](https://ap-northeast-1.console.aws.amazon.com/codesuite/settings/connections?region=ap-northeast-1)，核对 AWS 账户，选择 **Create connection → GitHub**。安装或选择属于目标 GitHub 账户的 **AWS Connector for GitHub**，授权访问目标私有仓库。已有状态为 `AVAILABLE` 的可用连接可以复用。[AWS 连接指南](https://docs.aws.amazon.com/dtconsole/latest/userguide/connections-create-github.html)
-3. 将连接 ARN 填入 [infra/config/dev.psd1](infra/config/dev.psd1) 的 `Parameters.ConnectionArn`。同一文件还定义了 `Profile`、`Region`、`ExpectedAccount`、项目名、环境、仓库和分支。新环境可另建配置文件，部署时通过 `-ConfigPath` 指定。
+       2，在左侧菜单选择 Settings（設定）→ Connections（接続）。
 
-从零准备仓库时，先在 GitHub 创建一个空的私有仓库，将仓库和分支填入环境配置，然后运行 [initialize-repository.ps1](scripts/initialize-repository.ps1)。脚本会初始化 Git、创建首次提交并推送到配置中的仓库和分支。当前工作区已配置 Git 和 `origin`，按日常流程提交并推送即可。
+       3，点击 Create connection（接続を作成），选择 GitHub(以后再项目，根据具体的代码管理工具进行选择)。
 
-```powershell
-.\scripts\initialize-repository.ps1
-```
+       4，登录 GitHub，授权 AWS 访问目标仓库。如果已经登录github，会自动跳出授权页面，此时绿色的授权可能不可点击，等待几秒钟刷新页面即可点击。
+
+       5，点击安装新的资源，选择需要连携的资源，然后完成接续。
+       
+       注意:如果已有可用且具备目标仓库访问权限的 Connection，可以直接复用，无须重复创建。
 
 ## 3. 本地验证
 
-在本机测试或运行 Java 示例时，使用 JDK 17 和 Maven 3.9。
+安装并使用 JDK 17 和 Maven 3.9。
 
-| 用途 | 脚本 | 调用 |
-| --- | --- | --- |
-| 运行测试并打包 JAR | [test-local.ps1](app/test-local.ps1) | `.\app\test-local.ps1` |
-| 启动已打包的应用 | [run-local.ps1](app/run-local.ps1) | `.\app\run-local.ps1` |
-| 从另一个窗口访问 `/` 和 `/health` | [check-local.ps1](app/check-local.ps1) | `.\app\check-local.ps1` |
 
-只跑测试时执行第一条。试跑应用时先打包，再启动并检查。完成后在启动窗口按 Ctrl+C 停止服务。
-
-可选的本地模板检查使用 `cfn-lint`，该工具依赖 Python。没有 Python 的电脑可以跳过这项检查，直接用第 4 步的 AWS CLI 调用 CloudFormation 验证模板。部署脚本使用 PowerShell 和 AWS CLI v2，内嵌的 Python Lambda 由 AWS 运行。
-
-## 4. 用 IaC 创建或更新流水线
-
-1. 运行 [preview-pipeline.ps1](infra/operations/preview-pipeline.ps1)（`.\infra\operations\preview-pipeline.ps1`）。脚本核对 AWS 账户、验证两份模板，再调用 [deploy.ps1](infra/deploy.ps1) 核对 GitHub 连接并预览流水线变更集。
-2. 有变更时，复制预览输出的变更集 ARN，运行 [inspect-change-set.ps1](infra/operations/inspect-change-set.ps1)（`.\infra\operations\inspect-change-set.ps1 -ChangeSetArn '<变更集 ARN>'`），核对资源操作。若预览报告没有变更，到此结束。
-3. 确认后，用同一个 ARN 运行 [apply-change-set.ps1](infra/operations/apply-change-set.ps1)（`.\infra\operations\apply-change-set.ps1 -ChangeSetArn '<变更集 ARN>'`）。脚本会执行这份变更集，等待并显示流水线栈的最终状态，预期为 `CREATE_COMPLETE` 或 `UPDATE_COMPLETE`。
+1. 在仓库根目录运行 `.\infra\operations\preview-pipeline.ps1`。预览脚本会核对 AWS 账户、验证两份模板，然后自动调用 `deploy.ps1` 核对 GitHub 连接并提交 CloudFormation 变更集。此时可以查看计划中的资源变更。
+2. 拿到预览输出的 ARN 后，用 [inspect-change-set.ps1](infra/operations/inspect-change-set.ps1) 查看这份变更集（`.\infra\operations\inspect-change-set.ps1 -ChangeSetArn '<变更集 ARN>'`）。
+3. 核对无误后，用同一个 ARN [部署流水线](infra/operations/apply-change-set.ps1)（`.\infra\operations\apply-change-set.ps1 -ChangeSetArn '<变更集 ARN>'`）。
 
 如果希望直接按当前配置生成并执行一份新变更集，可使用 `.\infra\deploy.ps1 -Apply`。[AWS CLI 部署说明](https://docs.aws.amazon.com/cli/latest/reference/cloudformation/deploy.html)
 

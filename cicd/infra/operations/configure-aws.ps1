@@ -1,5 +1,6 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param(
+    # The shared environment script loads this file.
     [string]$ConfigPath = (Join-Path $PSScriptRoot '../config/dev.psd1'),
     [switch]$Configure
 )
