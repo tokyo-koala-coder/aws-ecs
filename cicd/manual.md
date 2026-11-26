@@ -1,4 +1,4 @@
-# AWS 部署与清理操作手册
+·# AWS 部署与清理操作手册
 
 这是面向实际操作的 PowerShell 手顺。项目结构和各阶段设计见 [README](README.md)，首次实验的观察和故障恢复记录见 [lab.md](lab.md)。
 
@@ -8,9 +8,12 @@
 | --- | --- |
 | AWS 账户 / 区域 | `awsAccountId` / `region` |
 | AWS CLI profile | `cicd-deploy` |
-| GitHub 仓库 / 分支 | `https://github.com/tokyo-koala-coder/aws-ecs.git` / `master` |
+| GitHub 仓库 / 分支 |` https://github.com/tokyo-koala-coder/aws-ecs.git　`/ `master` |
 | GitHub 连接 | `aws-ecs`，ARN 见 [开发环境配置](infra/config/dev.psd1) |
-| CloudFormation 栈 | `java-ecs-demo-dev-pipeline`、`java-ecs-demo-dev-service` |
+|--------------- CloudFormation 栈 | `java-ecs-demo-dev-pipeline`、`java-ecs-demo-dev-service` |
+
+
+| 执行步骤 |
 
 ## 1. 配置 AWS CLI，准备CLI访问AWS云服务密钥
 
@@ -19,36 +22,39 @@
 在该IAM用户下创建 Create access key 。密钥保存在本机 AWS 凭证文件中，仓库配置里只保存 profile 名称。[IAM 密钥设置](https://docs.aws.amazon.com/IAM/latest/UserGuide/access-keys-admin-managed.html)
 
 接下来
-
-- 先维护项目配置 `infra/config/dev.psd1`，填写实际的 AWS Profile、Region、ExpectedAccount 及相关项目参数。
-- 使用 [configure-aws.ps1](infra/operations/configure-aws.ps1) 配置并验证 AWS 身份。该脚本会自动加载 `environment.ps1`，读取并校验 `dev.psd1` 中的配置。
-- 首次配置或更新本地 AWS 凭证时，执行 `.\infra\operations\configure-aws.ps1 -Configure`，按照提示输入 Access Key ID、Secret Access Key、默认区域及输出格式。
-- 本地已存在对应 Profile 时，直接执行 `.\infra\operations\configure-aws.ps1`，无需重复配置凭证。
-- AWS CLI 默认从当前用户目录下的 `.aws/config` 和 `.aws/credentials` 读取配置及凭证，也可以通过 `AWS_CONFIG_FILE` 和 `AWS_SHARED_CREDENTIALS_FILE` 环境变量指定自定义路径。
-
-最后，脚本通过 STS 获取当前 AWS 身份，并与 ExpectedAccount 进行比较，防止后续资源部署到错误的 AWS 账户。身份验证成功不代表已具备全部部署权限。
+     1，先维护项目配置 config/dev.psd1，填写实际的 AWS Profile、Region、ExpectedAccount 及相关项目参数。
+        使用 configure-aws.ps1 配置并验证 AWS 身份。该脚本会自动加载 environment.ps1，读取并校验 dev.psd1 中的配置。
+        首次配置或更新本地 AWS 凭证时，执行 .\infra\operations\configure-aws.ps1 -Configure，按照提示输入 Access Key ID、Secret Access Key、默认区域及输出格式。
+        本地已存在对应 Profile 时，直接执行 .\infra\operations\configure-aws.ps1，无需重复配置凭证。
+        AWS CLI 默认从当前用户目录下的 .aws/config 和 .aws/credentials 读取配置及凭证，也可以通过 AWS_CONFIG_FILE 和 AWS_SHARED_CREDENTIALS_FILE 环境变量指定自定义路径。
+     最后，脚本通过 STS 获取当前 AWS 身份，并与 ExpectedAccount 进行比较，防止后续资源部署到错误的 AWS 账户。身份验证成功不代表已具备全部部署权限。
 
 ## 2. GitHub 与 AWS CodePipeline 连接配置
-
 1. 从远程仓库拉取代码，git clone
 2. 创建 AWS 与 GitHub 的连接
-   1. 登录 AWS 控制台，搜索并进入 CodePipeline。
-   2. 在左侧菜单选择 Settings（設定）→ Connections（接続）。
-   3. 点击 Create connection（接続を作成），选择 GitHub(以后再项目，根据具体的代码管理工具进行选择)。
-   4. 登录 GitHub，授权 AWS 访问目标仓库。如果已经登录github，会自动跳出授权页面，此时绿色的授权可能不可点击，等待几秒钟刷新页面即可点击。
-   5. 点击安装新的资源，选择需要连携的资源，然后完成接续。
+       1，登录 AWS 控制台，搜索并进入 CodePipeline。
 
-<span style="color: red;">注意：如果已有可用且具备目标仓库访问权限的 Connection，可以直接复用，无须重复创建。</span>
+       2，在左侧菜单选择 Settings（設定）→ Connections（接続）。
+
+       3，点击 Create connection（接続を作成），选择 GitHub(以后再项目，根据具体的代码管理工具进行选择)。
+
+       4，登录 GitHub，授权 AWS 访问目标仓库。如果已经登录github，会自动跳出授权页面，此时绿色的授权可能不可点击，等待几秒钟刷新页面即可点击。
+
+       5，点击安装新的资源，选择需要连携的资源，然后完成接续。
+       
+``注意:如果已有可用且具备目标仓库访问权限的 Connection，可以直接复用，无须重复创建。``
 
 ## 3. 本地验证
 
 安装并使用 JDK 17 和 Maven 3.9。
 
-## 4. 部署流水线栈
 
-1. 手动运行 [preview-pipeline.ps1](infra/operations/preview-pipeline.ps1) 后，它会自动调用 `deploy.ps1` 生成待审核的变更集。
-2. 拿到 Preview 输出的 ARN 后，运行 [inspect-change-set.ps1](infra/operations/inspect-change-set.ps1) 查看这份变更集。
-3. 核对无误后，用 ARN 部署流水线。 [apply-change-set.ps1](infra/operations/apply-change-set.ps1)。脚本会执行这份变更集，等待并显示流水线栈的最终状态，预期为 `CREATE_COMPLETE` 或 `UPDATE_COMPLETE`。
+1，手动运行 preview-pipeline.ps1 后，它会自动调用 deploy.ps1 生成待审核的变更集。
+2. 拿到 Preview 输出的 ARN 后，运行 inspect-change-set.ps1 查看这份变更集。
+3. 核对无误后，用 ARN 部署流水线。 [apply-change-set.ps1]。脚本会执行这份变更集，等待并显示流水线栈的最终状态，预期为 `CREATE_COMPLETE` 或 `UPDATE_COMPLETE`。
+
+``注意:因为这里我们是从远程仓库下载的代码，所以执行上述命令就可以进行构造或者执行流水线。但是，如果是我们自己刚刚搭建的新工程，那么一定要上传到远程仓库，因为流水线的部署是拉取远程仓库的代码，而不是本地。``
+
 
 ## 5. 运行流水线并审批
 
