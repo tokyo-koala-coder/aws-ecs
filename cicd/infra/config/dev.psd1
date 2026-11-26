@@ -1,12 +1,12 @@
 @{
-    Profile = 'cicd-deploy'
+    Profile = 'YOUR_AWS_PROFILE'
     Region = 'ap-northeast-1'
-    ExpectedAccount = '572535616215'
+    ExpectedAccount = 'YOUR_AWS_ACCOUNT_ID'
     Parameters = @{
-        ProjectName = 'java-ecs-demo'
+        ProjectName = 'ecs-pipeline'
         Environment = 'dev'
-        GitHubRepository = 'mystylezfzjp-eng/cicd-java-ecs-demo'
-        GitHubBranch = 'main'
-        ConnectionArn = 'arn:aws:codeconnections:ap-northeast-1:572535616215:connection/15f2411e-458c-4d2e-a3b8-cc04ee2594f8'
+        GitHubRepository = 'YOUR_PROJET_REMOTE_ADDRESS'
+        GitHubBranch = 'master'
+        ConnectionArn = 'YOUR_ConnectionArn'
     }
 }

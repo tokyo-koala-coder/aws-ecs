@@ -6,32 +6,22 @@
 
 | 项目 | 值 |
 | --- | --- |
-| AWS 账户 / 区域 | `accountId` / region` |
+| AWS 账户 / 区域 | `awsAccountId` / `region` |
 | AWS CLI profile | `cicd-deploy` |
-| GitHub 仓库 / 分支 | [mystylezfzjp-eng/cicd-java-ecs-demo](https://github.com/tokyo-koala-coder/aws-ecs.git) / `main` |
-| GitHub 连接 | `github-cicd-demo`，ARN 见 [开发环境配置](infra/config/dev.psd1) |
-| 流水线 / ECS 集群 / ECS 服务 | `java-ecs-demo-dev` |
-| CloudFormation 栈 | `java-ecs-demo-dev-pipeline`、`java-ecs-demo-dev-service` |
+| GitHub 仓库 / 分支 |` https://github.com/tokyo-koala-coder/aws-ecs.git　`/ `master` |
+| GitHub 连接 | `aws-ecs`，ARN 见 [开发环境配置](infra/config/dev.psd1) |
+|--------------- CloudFormation 栈 | `java-ecs-demo-dev-pipeline`、`java-ecs-demo-dev-service` |
 
-按当前要做的事选择步骤。已部署环境的初次验证结果见 [实验记录](lab.md)。
 
-| 目标 | 执行步骤 |
-| --- | --- |
-| 第一次从零部署 | 完成第 1、2 步的账号和仓库准备，再按第 4、5、6 步预览、部署和验证。 |
-| 在已有流水线上发布应用、镜像或服务模板改动 | 提交并推送目标分支，按第 5、6 步审批和验证。已有自动触发的执行时，跳过手动启动脚本。 |
-| 创建或变更流水线栈 | 复用已就绪的账号、仓库和连接，从第 4 步开始。 |
-| 只在本机测试或启动应用 | 执行第 3 步。 |
-| 结束演示并释放 AWS 资源 | 按「清理」一节操作。 |
+| 执行步骤 |
 
-脚本调用示例均从项目根目录的 **PowerShell** 执行。每个 AWS 脚本独立读取 [开发环境配置](infra/config/dev.psd1)，使用其他环境时在相关调用上添加 `-ConfigPath`。打开新的 PowerShell 窗口后，可以直接运行相应脚本。
+## 1. 配置 AWS CLI，准备CLI访问AWS云服务密钥
 
-## 1. 配置 AWS CLI
+安装 AWS CLI v2。
+在 IAM 中创建或复用部署专用 IAM 用户。
+在该IAM用户下创建 Create access key 。密钥保存在本机 AWS 凭证文件中，仓库配置里只保存 profile 名称。[IAM 密钥设置](https://docs.aws.amazon.com/IAM/latest/UserGuide/access-keys-admin-managed.html)
 
-安装 AWS CLI v2。在 IAM 中创建或复用部署专用 IAM 用户，通过 **Users → 用户 → Security credentials → Create access key** 创建 CLI 用途的访问密钥。已配置 `cicd-deploy` 时，可直接验证身份。密钥保存在本机 AWS 凭证文件中，仓库配置里只保存 profile 名称。[IAM 密钥设置](https://docs.aws.amazon.com/IAM/latest/UserGuide/access-keys-admin-managed.html)
-
-已有的项目部署策略需允许 CloudFormation 创建、检查和执行变更集，创建模板声明的资源、创建与传递项目 IAM 服务角色，以及读取和传递 GitHub Connection。在隔离的演示账户中，只使用 AWS 托管策略时，可选择 `PowerUserAccess` 和 `IAMFullAccess`。该组合授予广泛账户级权限。共享账户或长期部署身份应使用项目范围的策略。[PowerUserAccess](https://docs.aws.amazon.com/aws-managed-policy/latest/reference/PowerUserAccess.html) · [IAMFullAccess](https://docs.aws.amazon.com/aws-managed-policy/latest/reference/IAMFullAccess.html)
-
-用 [configure-aws.ps1](infra/operations/configure-aws.ps1) 配置并验证身份。首次配置或更新本机 profile 时运行 `.\infra\operations\configure-aws.ps1 -Configure`，按提示输入访问密钥，默认区域填 `ap-northeast-1`，输出格式填 `json`。已有 profile 时，按需运行 `.\infra\operations\configure-aws.ps1` 验证账户。STS 用于确认身份，后面的变更集会检查部署所需权限。
+用 [configure-aws.ps1](infra/operations/configure-aws.ps1) 配置并验证身份。首次配置或更新本机 profile 时运行 `.\infra\operations\configure-aws.ps1 -Configure`，按提示输入访问密钥，默认区域填 `yourRegion`，输出格式填 `json`。已有 profile 时，按需运行 `.\infra\operations\configure-aws.ps1` 验证账户。STS 用于确认身份，后面的变更集会检查部署所需权限。
 
 ## 2. 准备 GitHub 仓库和连接
 
