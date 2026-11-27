@@ -119,13 +119,13 @@ Java 源码、Dockerfile 和 `infra/service.yml` 的改动随 GitHub 分支进�
 如果 S3 桶从未启用版本控制，将下面两个占位值替换为实际名称，再运行 [remove-retained-resources.ps1](infra/operations/remove-retained-resources.ps1)。根据提示分别确认删除 S3 桶和 ECR 仓库。
 
 ```powershell
-.\infra\operations\remove-retained-resources.ps1 -ArtifactBucket '<制品桶名>' -RepositoryName '<ECR 仓库名>'
+.\infra\operations\remove-retained-resources.ps1 -ArtifactBucket '<ArtifactBucket>' -RepositoryName '<RepositoryName>'
 ```
 
 如果 S3 桶的版本控制已启用或已暂停，先在 S3 控制台清空所有对象版本和删除标记，再删除桶。然后只传 ECR 仓库名运行下面的命令。 [S3 删除指南](https://docs.aws.amazon.com/AmazonS3/latest/userguide/delete-bucket.html)
 
 ```powershell
-.\infra\operations\remove-retained-resources.ps1 -RepositoryName '<ECR 仓库名>'
+.\infra\operations\remove-retained-resources.ps1 -RepositoryName '<RepositoryName>'
 ```
 
 中途失败后重试时，只传仍需删除的资源名称。
